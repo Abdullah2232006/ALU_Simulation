@@ -1,5 +1,4 @@
 # ALU_Simulation
-```markdown
 # 2-Bit ALU — Breadboard Simulation
 
 An interactive web-based simulation of a 2-bit Arithmetic Logic Unit built from discrete 7400-series TTL logic gates. Designed as a companion tool for breadboard builders and report writers working with the Proteus 8 reference design.
@@ -221,4 +220,4 @@ Tie unused gate inputs to a fixed level:
 ## License
 
 This project is provided for educational and internal team use. See original documentation for any additional restrictions.
-```
+
