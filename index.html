@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2-Bit ALU Breadboard Simulation</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg: #0c1222;
+    --card: #111b30;
+    --card2: #162040;
+    --border: #1e2d4a;
+    --text: #d4dce8;
+    --muted: #5a6a82;
+    --accent: #00e676;
+    --accent-dim: #0a2e1a;
+    --warn: #ff6b35;
+    --led-red: #ff4444;
+    --led-off: #1a1a2e;
+    --copper: #c87533;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Space Grotesk', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  /* Background pattern */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(0,230,118,0.03) 1px, transparent 0);
+    background-size: 24px 24px;
+    pointer-events: none; z-index: 0;
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* DIP Switch */
+  .dip-switch {
+    width: 34px; height: 50px;
+    background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
+    border-radius: 3px;
+    border: 1px solid #444;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+    flex-shrink: 0;
+  }
+  .dip-switch:hover { border-color: #666; }
+  .dip-switch .lever {
+    width: 22px; height: 20px;
+    background: linear-gradient(180deg, #aaa 0%, #777 100%);
+    border-radius: 2px;
+    position: absolute;
+    left: 50%; transform: translateX(-50%);
+    bottom: 3px;
+    transition: bottom 0.12s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  }
+  .dip-switch.active { border-color: var(--accent); }
+  .dip-switch.active .lever { bottom: 25px; }
+  .dip-switch .indicator {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    position: absolute;
+    bottom: 4px; left: 50%; transform: translateX(-50%);
+    background: #1a1a1a;
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .dip-switch.active .indicator {
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+  .dip-switch .pin {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    width: 4px; height: 5px;
+    background: var(--copper);
+    border-radius: 0 0 1px 1px;
+  }
+  .dip-switch .pin.top { top: -5px; border-radius: 1px 1px 0 0; }
+  .dip-switch .pin.bot { bottom: -5px; }
+
+  /* LED */
+  .led {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--led-off);
+    border: 2px solid #333;
+    transition: all 0.25s;
+    flex-shrink: 0;
+  }
+  .led.on-red {
+    background: var(--led-red);
+    border-color: #ff6666;
+    box-shadow: 0 0 8px var(--led-red), 0 0 20px rgba(255,68,68,0.3);
+  }
+  .led.on-green {
+    background: var(--accent);
+    border-color: #66ffaa;
+    box-shadow: 0 0 8px var(--accent), 0 0 20px rgba(0,230,118,0.3);
+  }
+  .led.on-orange {
+    background: var(--warn);
+    border-color: #ffaa66;
+    box-shadow: 0 0 8px var(--warn), 0 0 20px rgba(255,107,53,0.3);
+  }
+
+  /* Operation table */
+  .op-table { border-collapse: collapse; width: 100%; }
+  .op-table th, .op-table td {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    text-align: center;
+    font-size: 13px;
+  }
+  .op-table th {
+    background: var(--card2);
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+  .op-table tr.active-row {
+    background: rgba(0,230,118,0.08);
+    border-color: var(--accent);
+  }
+  .op-table tr.active-row td {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* Canvas container */
+  #schematic-canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 8px;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* Pulse animation for active block label */
+  @keyframes subtlePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+
+  /* Signal tag */
+  .sig-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 4px;
+    font-size: 12px; font-weight: 500;
+  }
+  .sig-high { background: rgba(0,230,118,0.15); color: var(--accent); }
+  .sig-low { background: rgba(90,106,130,0.15); color: var(--muted); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body class="relative">
+
+<!-- Header -->
+<header class="relative z-10 border-b border-[--border] px-4 py-3 flex items-center gap-4 flex-wrap">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 rounded-md bg-gradient-to-br from-[--accent] to-emerald-700 flex items-center justify-center">
+      <i class="fas fa-microchip text-[--bg] text-sm"></i>
+    </div>
+    <div>
+      <h1 class="text-lg font-bold tracking-tight" style="font-family:'Space Grotesk'">2-Bit ALU Simulation</h1>
+      <p class="text-[11px] text-[--muted] tracking-wide">7400-Series Logic &middot; Breadboard Reference</p>
+    </div>
+  </div>
+  <div class="ml-auto flex items-center gap-3">
+    <span id="op-badge" class="mono text-sm font-semibold px-3 py-1 rounded-full border border-[--border] bg-[--card] text-[--muted]">---</span>
+  </div>
+</header>
+
+<!-- Main Content -->
+<main class="relative z-10 p-4 flex flex-col lg:flex-row gap-4 max-w-[1400px] mx-auto">
+
+  <!-- Left Panel: Inputs -->
+  <aside class="lg:w-[200px] flex-shrink-0 flex flex-col gap-3">
+    <!-- Operand A -->
+    <div class="bg-[--card] border border-[--border] rounded-lg p-3">
+      <div class="text-[10px] uppercase tracking-widest text-[--muted] mb-2 font-semibold">Operand A</div>
+      <div class="flex items-end gap-3">
+        <div class="flex flex-col items-center gap-1">
+          <div class="dip-switch" data-signal="A1" onclick="toggleSwitch(this)" role="switch" aria-label="A1" tabindex="0">
+            <div class="pin top"></div><div class="lever"></div><div class="indicator"></div><div class="pin bot"></div>
+          </div>
+          <span class="mono text-xs text-[--muted]">A1</span>
+        </div>
+        <div class="flex flex-col items-center gap-1">
+          <div class="dip-switch" data-signal="A0" onclick="toggleSwitch(this)" role="switch" aria-label="A0" tabindex="0">
+            <div class="pin top"></div><div class="lever"></div><div class="indicator"></div><div class="pin bot"></div>
+          </div>
+          <span class="mono text-xs text-[--muted]">A0</span>
+        </div>
+        <div class="mono text-lg font-bold text-[--text] mb-1" id="a-dec">0</div>
+      </div>
+      <div class="mono text-xs text-[--muted] mt-1">= <span id="a-bin">00</span><sub>2</sub></div>
+    </div>
+
+    <!-- Operand B -->
+    <div class="bg-[--card] border border-[--border] rounded-lg p-3">
+      <div class="text-[10px] uppercase tracking-widest text-[--muted] mb-2 font-semibold">Operand B</div>
+      <div class="flex items-end gap-3">
+        <div class="flex flex-col items-center gap-1">
+          <div class="dip-switch" data-signal="B1" onclick="toggleSwitch(this)" role="switch" aria-label="B1" tabindex="0">
+            <div class="pin top"></div><div class="lever"></div><div class="indicator"></div><div class="pin bot"></div>
+          </div>
+          <span class="mono text-xs text-[--muted]">B1</span>
+        </div>
+        <div class="flex flex-col items-center gap-1">
+          <div class="dip-switch" data-signal="B0" onclick="toggleSwitch(this)" role="switch" aria-label="B0" tabindex="0">
+            <div class="pin top"></div><div class="lever"></div><div class="indicator"></div><div class="pin bot"></div>
+          </div>
+          <span class="mono text-xs text-[--muted]">B0</span>
+        </div>
+        <div class="mono text-lg font-bold text-[--text] mb-1" id="b-dec">0</div>
+      </div>
+      <div class="mono text-xs text-[--muted] mt-1">= <span id="b-bin">00</span><sub>2</sub></div>
+    </div>
+
+    <!-- Select Lines -->
+    <div class="bg-[--card] border border-[--border] rounded-lg p-3">
+      <div class="text-[10px] uppercase tracking-widest text-[--muted] mb-2 font-semibold">Select Lines</div>
+      <div class="flex items-end gap-2">
+        <div class="flex flex-col items-center gap-1">
+          <div class="dip-switch" data-signal="S2" onclick="toggleSwitch(this)" role="switch" aria-label="S2" tabindex="0">
+            <div class="pin top"></div><div class="lever"></div><div class="indicator"></div><div class="pin bot"></div>
+          </div>
+          <span class="mono text-xs text-[--muted]">S2</span>
+        </div>
+        <div class="flex flex-col items-center gap-1">
+          <div class="dip-switch" data-signal="S1" onclick="toggleSwitch(this)" role="switch" aria-label="S1" tabindex="0">
+            <div class="pin top"></div><div class="lever"></div><div class="indicator"></div><div class="pin bot"></div>
+          </div>
+          <span class="mono text-xs text-[--muted]">S1</span>
+        </div>
+        <div class="flex flex-col items-center gap-1">
+          <div class="dip-switch" data-signal="S0" onclick="toggleSwitch(this)" role="switch" aria-label="S0" tabindex="0">
+            <div class="pin top"></div><div class="lever"></div><div class="indicator"></div><div class="pin bot"></div>
+          </div>
+          <span class="mono text-xs text-[--muted]">S0</span>
+        </div>
+        <div class="mono text-sm font-bold text-[--text] mb-1" id="s-bin">000</div>
+      </div>
+    </div>
+
+    <!-- Carry In -->
+    <div class="bg-[--card] border border-[--border] rounded-lg p-3">
+      <div class="text-[10px] uppercase tracking-widest text-[--muted] mb-2 font-semibold">Carry Input</div>
+      <div class="flex items-center gap-3">
+        <div class="flex flex-col items-center gap-1">
+          <div class="dip-switch" data-signal="Cin" onclick="toggleSwitch(this)" role="switch" aria-label="Cin" tabindex="0">
+            <div class="pin top"></div><div class="lever"></div><div class="indicator"></div><div class="pin bot"></div>
+          </div>
+          <span class="mono text-xs text-[--muted]">Cin</span>
+        </div>
+        <div class="mono text-lg font-bold text-[--text]" id="cin-val">0</div>
+      </div>
+    </div>
+
+    <!-- Computation Display -->
+    <div class="bg-[--card] border border-[--border] rounded-lg p-3">
+      <div class="text-[10px] uppercase tracking-widest text-[--muted] mb-2 font-semibold">Computation</div>
+      <div class="mono text-sm leading-relaxed" id="comp-display" style="color:var(--text)">
+        Set inputs to begin
+      </div>
+    </div>
+  </aside>
+
+  <!-- Center: Schematic Canvas -->
+  <section class="flex-1 min-w-0 flex flex-col gap-3">
+    <div class="bg-[--card] border border-[--border] rounded-lg p-3">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-[10px] uppercase tracking-widest text-[--muted] font-semibold">ALU Block Diagram</div>
+        <div class="flex items-center gap-2 text-[10px] text-[--muted]">
+          <span class="flex items-center gap-1"><span class="w-3 h-0.5 inline-block rounded" style="background:var(--accent)"></span> HIGH</span>
+          <span class="flex items-center gap-1"><span class="w-3 h-0.5 inline-block rounded" style="background:#1a3a2a"></span> LOW</span>
+        </div>
+      </div>
+      <canvas id="schematic-canvas" width="1600" height="860"></canvas>
+    </div>
+
+    <!-- Intermediate Signals -->
+    <div class="bg-[--card] border border-[--border] rounded-lg p-3">
+      <div class="text-[10px] uppercase tracking-widest text-[--muted] mb-2 font-semibold">Internal Signals</div>
+      <div class="flex flex-wrap gap-2" id="sig-panel">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- Right Panel: Outputs -->
+  <aside class="lg:w-[180px] flex-shrink-0 flex flex-col gap-3">
+    <!-- Output LEDs -->
+    <div class="bg-[--card] border border-[--border] rounded-lg p-4">
+      <div class="text-[10px] uppercase tracking-widest text-[--muted] mb-3 font-semibold">Output</div>
+      <div class="flex flex-col gap-4">
+        <div class="flex items-center gap-3">
+          <div class="led" id="led-f1"></div>
+          <div>
+            <div class="mono text-xs text-[--muted]">F1</div>
+            <div class="mono text-xl font-bold" id="f1-val">0</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="led" id="led-f0"></div>
+          <div>
+            <div class="mono text-xs text-[--muted]">F0</div>
+            <div class="mono text-xl font-bold" id="f0-val">0</div>
+          </div>
+        </div>
+        <div class="border-t border-[--border] pt-3 flex items-center gap-3">
+          <div class="led" id="led-cout"></div>
+          <div>
+            <div class="mono text-xs text-[--muted]">Cout</div>
+            <div class="mono text-xl font-bold" id="cout-val">0</div>
+          </div>
+        </div>
+      </div>
+      <div class="mt-3 pt-3 border-t border-[--border]">
+        <div class="mono text-xs text-[--muted]">Result</div>
+        <div class="mono text-2xl font-bold mt-1" id="f-dec" style="color:var(--accent)">0</div>
+        <div class="mono text-xs text-[--muted]">= <span id="f-bin">00</span><sub>2</sub></div>
+      </div>
+    </div>
+
+    <!-- Active Unit Indicator -->
+    <div class="bg-[--card] border border-[--border] rounded-lg p-3">
+      <div class="text-[10px] uppercase tracking-widest text-[--muted] mb-2 font-semibold">Active Path</div>
+      <div id="active-path" class="mono text-sm font-semibold" style="color:var(--muted)">Logic Unit</div>
+      <div class="text-xs text-[--muted] mt-1" id="path-note">S2 = 0 selects LU</div>
+    </div>
+
+    <!-- IC Reference -->
+    <div class="bg-[--card] border border-[--border] rounded-lg p-3">
+      <div class="text-[10px] uppercase tracking-widest text-[--muted] mb-2 font-semibold">ICs Used</div>
+      <div class="space-y-1.5 text-xs">
+        <div class="flex justify-between"><span class="mono text-[--text]">7408</span><span class="text-[--muted]">Quad AND</span></div>
+        <div class="flex justify-between"><span class="mono text-[--text]">7432</span><span class="text-[--muted]">Quad OR</span></div>
+        <div class="flex justify-between"><span class="mono text-[--text]">7486</span><span class="text-[--muted]">Quad XOR</span></div>
+        <div class="flex justify-between"><span class="mono text-[--text]">7404</span><span class="text-[--muted]">Hex NOT</span></div>
+      </div>
+      <div class="text-[10px] text-[--muted] mt-2 border-t border-[--border] pt-2">
+        <i class="fas fa-exclamation-triangle text-[--warn] mr-1"></i>VCC=pin14, GND=pin7
+      </div>
+    </div>
+  </aside>
+</main>
+
+<!-- Operation Table -->
+<section class="relative z-10 px-4 pb-6 max-w-[1400px] mx-auto">
+  <div class="bg-[--card] border border-[--border] rounded-lg p-4">
+    <div class="text-[10px] uppercase tracking-widest text-[--muted] mb-3 font-semibold">Operation Reference Table</div>
+    <div class="overflow-x-auto">
+      <table class="op-table mono" id="op-table">
+        <thead>
+          <tr>
+            <th>S2</th><th>S1</th><th>S0</th><th>Cin=0</th><th>Cin=1</th><th>Unit</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-s="000"><td>0</td><td>0</td><td>0</td><td>A AND B</td><td>A AND B</td><td>Logic</td></tr>
+          <tr data-s="001"><td>0</td><td>0</td><td>1</td><td>A OR B</td><td>A OR B</td><td>Logic</td></tr>
+          <tr data-s="010"><td>0</td><td>1</td><td>0</td><td>A XOR B</td><td>A XOR B</td><td>Logic</td></tr>
+          <tr data-s="011"><td>0</td><td>1</td><td>1</td><td>NOT A</td><td>NOT A</td><td>Logic</td></tr>
+          <tr data-s="100"><td>1</td><td>0</td><td>0</td><td>A + B</td><td>A + B + 1</td><td>Arith</td></tr>
+          <tr data-s="101"><td>1</td><td>0</td><td>1</td><td>A + B'</td><td>A - B</td><td>Arith</td></tr>
+          <tr data-s="110"><td>1</td><td>1</td><td>0</td><td>A + B</td><td>A + B + 1</td><td>Arith</td></tr>
+          <tr data-s="111"><td>1</td><td>1</td><td>1</td><td>A + B'</td><td>A - B</td><td>Arith</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<script>
+// ─── State ───────────────────────────────────────────────
+const state = { A1:0, A0:0, B1:0, B0:0, S2:0, S1:0, S0:0, Cin:0 };
+
+// Wire animation values (smooth lerp)
+const wireAnim = {};
+
+// ─── ALU Computation ─────────────────────────────────────
+function compute() {
+  const { A1, A0, B1, B0, S2, S1, S0, Cin } = state;
+
+  // Logic Unit outputs
+  const s1s0 = (S1 << 1) | S0;
+  const LU_F0 = [A0&B0, A0|B0, A0^B0, A0^1][s1s0];
+  const LU_F1 = [A1&B1, A1|B1, A1^B1, A1^1][s1s0];
+
+  // Arithmetic Unit - B inversion controlled by S0
+  const B0i = B0 ^ S0;
+  const B1i = B1 ^ S0;
+  const sum0 = A0 ^ B0i ^ Cin;
+  const carry0 = (A0 & B0i) | (Cin & (A0 ^ B0i));
+  const sum1 = A1 ^ B1i ^ carry0;
+  const cout = (A1 & B1i) | (carry0 & (A1 ^ B1i));
+
+  // MUX: S2=0 → LU, S2=1 → AU
+  let F0, F1, Cout;
+  if (S2 === 0) {
+    F0 = LU_F0; F1 = LU_F1; Cout = 0;
+  } else {
+    F0 = sum0; F1 = sum1; Cout = cout;
+  }
+
+  return { F1, F0, Cout, LU_F0, LU_F1, AU_F0: sum0, AU_F1: sum1, B0i, B1i, carry0, cout };
+}
+
+// ─── Toggle Switch ───────────────────────────────────────
+function toggleSwitch(el) {
+  const sig = el.dataset.signal;
+  state[sig] = state[sig] ? 0 : 1;
+  el.classList.toggle('active', state[sig] === 1);
+  update();
+}
+
+// Keyboard support for switches
+document.querySelectorAll('.dip-switch').forEach(sw => {
+  sw.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSwitch(sw); }
+  });
+});
+
+// ─── Update UI ───────────────────────────────────────────
+function update() {
+  const r = compute();
+  const A = (state.A1 << 1) | state.A0;
+  const B = (state.B1 << 1) | state.B0;
+  const F = (r.F1 << 1) | r.F0;
+  const sKey = '' + state.S2 + state.S1 + state.S0;
+
+  // Decimal displays
+  document.getElementById('a-dec').textContent = A;
+  document.getElementById('b-dec').textContent = B;
+  document.getElementById('a-bin').textContent = state.A1 + '' + state.A0;
+  document.getElementById('b-bin').textContent = state.B1 + '' + state.B0;
+  document.getElementById('s-bin').textContent = sKey;
+  document.getElementById('cin-val').textContent = state.Cin;
+
+  // Output LEDs
+  setLed('led-f1', r.F1, 'on-red');
+  setLed('led-f0', r.F0, 'on-red');
+  setLed('led-cout', r.Cout, 'on-orange');
+  document.getElementById('f1-val').textContent = r.F1;
+  document.getElementById('f0-val').textContent = r.F0;
+  document.getElementById('cout-val').textContent = r.Cout;
+  document.getElementById('f-dec').textContent = F;
+  document.getElementById('f-bin').textContent = r.F1 + '' + r.F0;
+
+  // Operation badge
+  const opNames = {
+    '000':'AND','001':'OR','010':'XOR','011':'NOT A',
+    '100': state.Cin ? 'ADD+1' : 'ADD',
+    '101': state.Cin ? 'SUB' : "A+B'",
+    '110': state.Cin ? 'ADD+1' : 'ADD',
+    '111': state.Cin ? 'SUB' : "A+B'"
+  };
+  const opName = opNames[sKey] || '---';
+  const badge = document.getElementById('op-badge');
+  badge.textContent = opName;
+  badge.style.color = state.S2 ? 'var(--warn)' : 'var(--accent)';
+  badge.style.borderColor = state.S2 ? 'var(--warn)' : 'var(--accent)';
+
+  // Active path indicator
+  const ap = document.getElementById('active-path');
+  const pn = document.getElementById('path-note');
+  if (state.S2 === 0) {
+    ap.textContent = 'Logic Unit';
+    ap.style.color = 'var(--accent)';
+    pn.textContent = 'S2 = 0 selects LU';
+  } else {
+    ap.textContent = 'Arithmetic Unit';
+    ap.style.color = 'var(--warn)';
+    pn.textContent = 'S2 = 1 selects AU';
+  }
+
+  // Computation display
+  updateCompDisplay(A, B, F, r, sKey, opName);
+
+  // Operation table highlight
+  document.querySelectorAll('#op-table tbody tr').forEach(tr => {
+    tr.classList.toggle('active-row', tr.dataset.s === sKey);
+  });
+
+  // Intermediate signals panel
+  updateSignalPanel(r, A, B);
+}
+
+function setLed(id, val, onClass) {
+  const el = document.getElementById(id);
+  el.classList.remove('on-red','on-green','on-orange');
+  if (val) el.classList.add(onClass);
+}
+
+function updateCompDisplay(A, B, F, r, sKey, opName) {
+  const el = document.getElementById('comp-display');
+  const s1s0 = (state.S1 << 1) | state.S0;
+  let html = '';
+
+  if (state.S2 === 0) {
+    // Logic operations
+    switch(s1s0) {
+      case 0: html = `<span style="color:var(--accent)">${A}</span> AND <span style="color:var(--accent)">${B}</span> = <span style="color:var(--warn)">${F}</span>`; break;
+      case 1: html = `<span style="color:var(--accent)">${A}</span> OR <span style="color:var(--accent)">${B}</span> = <span style="color:var(--warn)">${F}</span>`; break;
+      case 2: html = `<span style="color:var(--accent)">${A}</span> XOR <span style="color:var(--accent)">${B}</span> = <span style="color:var(--warn)">${F}</span>`; break;
+      case 3: html = `NOT <span style="color:var(--accent)">${A}</span> = <span style="color:var(--warn)">${F}</span>`; break;
+    }
+  } else {
+    // Arithmetic
+    const isSub = state.S0 === 1 && state.Cin === 1;
+    const isAddP1 = state.Cin === 1 && !isSub;
+    if (isSub) {
+      // Signed interpretation for 2-bit
+      let signedF = F > 1 ? F - 4 : F;
+      html = `<span style="color:var(--accent)">${A}</span> - <span style="color:var(--accent)">${B}</span> = <span style="color:var(--warn)">${signedF}</span>`;
+      if (signedF < 0) html += ` <span class="text-[--muted]">(${r.F1}${r.F0}\u2082)</span>`;
+    } else if (isAddP1) {
+      html = `<span style="color:var(--accent)">${A}</span> + <span style="color:var(--accent)">${B}</span> + 1 = <span style="color:var(--warn)">${F}</span>`;
+    } else {
+      html = `<span style="color:var(--accent)">${A}</span> + <span style="color:var(--accent)">${B}</span> = <span style="color:var(--warn)">${F}</span>`;
+    }
+    if (r.Cout) html += ` <span class="text-[--muted]">(Cout=1)</span>`;
+  }
+  el.innerHTML = html;
+}
+
+function updateSignalPanel(r, A, B) {
+  const panel = document.getElementById('sig-panel');
+  const sigs = [
+    { name: 'A', val: A, bits: state.A1+''+state.A0 },
+    { name: 'B', val: B, bits: state.B1+''+state.B0 },
+    { name: "B'", val: (r.B1i<<1)|r.B0i, bits: r.B1i+''+r.B0i },
+    { name: 'Cin', val: state.Cin, bits: ''+state.Cin },
+    { name: 'C0', val: r.carry0, bits: ''+r.carry0 },
+    { name: 'LU', val: (r.LU_F1<<1)|r.LU_F0, bits: r.LU_F1+''+r.LU_F0 },
+    { name: 'AU', val: (r.AU_F1<<1)|r.AU_F0, bits: r.AU_F1+''+r.AU_F0 },
+  ];
+  panel.innerHTML = sigs.map(s =>
+    `<span class="sig-tag ${s.val ? 'sig-high' : 'sig-low'} mono">
+      ${s.name}=<span class="font-bold">${s.bits}</span>
+    </span>`
+  ).join('');
+}
+
+// ─── Canvas Schematic ────────────────────────────────────
+const canvas = document.getElementById('schematic-canvas');
+const ctx = canvas.getContext('2d');
+const CW = 800, CH = 430; // Logical size
+const dpr = window.devicePixelRatio || 1;
+canvas.width = CW * dpr;
+canvas.height = CH * dpr;
+canvas.style.width = '100%';
+canvas.style.aspectRatio = CW + '/' + CH;
+ctx.scale(dpr, dpr);
+
+// Color constants
+const COL_HIGH = '#00e676';
+const COL_LOW = '#14261a';
+const COL_GLOW = 'rgba(0,230,118,0.25)';
+const COL_BLOCK = '#162040';
+const COL_BLOCK_BORDER = '#1e3a5f';
+const COL_BLOCK_ACTIVE_LU = '#00e676';
+const COL_BLOCK_ACTIVE_AU = '#ff6b35';
+const COL_TEXT = '#8899aa';
+const COL_TEXT_BRIGHT = '#d4dce8';
+const COL_JUNCTION = '#00e676';
+
+// Block definitions
+const blocks = [
+  { id:'lu', label:'LOGIC UNIT', sub:'AND / OR / XOR / NOT', x:230, y:30, w:165, h:115, activeColor: COL_BLOCK_ACTIVE_LU },
+  { id:'au', label:'ARITHMETIC UNIT', sub:'Full Adder x2', x:230, y:260, w:165, h:130, activeColor: COL_BLOCK_ACTIVE_AU },
+  { id:'mux', label:'2:1', sub:'MUX', x:520, y:95, w:60, h:195, activeColor: COL_BLOCK_ACTIVE_LU },
+];
+
+// Wire definitions: each wire has points array and a signal getter function
+function getWireDefs() {
+  const s = state;
+  const r = compute();
+  return [
+    // A bus to LU
+    { pts:[{x:48,y:135},{x:168,y:135},{x:168,y:75},{x:230,y:75}], sig: s.A1|s.A0, id:'a_lu' },
+    // A bus to AU
+    { pts:[{x:168,y:135},{x:168,y:295},{x:230,y:295}], sig: s.A1|s.A0, id:'a_au' },
+    // B bus to LU
+    { pts:[{x:48,y:190},{x:153,y:190},{x:153,y:105},{x:230,y:105}], sig: s.B1|s.B0, id:'b_lu' },
+    // B bus to AU
+    { pts:[{x:153,y:190},{x:153,y:320},{x:230,y:320}], sig: s.B1|s.B0, id:'b_au' },
+    // S2 to MUX
+    { pts:[{x:48,y:25},{x:550,y:25},{x:550,y:95}], sig: s.S2, id:'s2_mux' },
+    // S1,S0 to LU
+    { pts:[{x:48,y:345},{x:133,y:345},{x:133,y:125},{x:230,y:125}], sig: s.S1|s.S0, id:'s_lu' },
+    // S1,S0 to AU
+    { pts:[{x:133,y:345},{x:133,y:370},{x:230,y:370}], sig: s.S1|s.S0, id:'s_au' },
+    // Cin to AU
+    { pts:[{x:48,y:395},{x:113,y:395},{x:113,y:395},{x:230,y:395}], sig: s.Cin, id:'cin_au' },
+    // LU output to MUX input 0
+    { pts:[{x:395,y:85},{x:458,y:85},{x:458,y:152},{x:520,y:152}], sig: (r.LU_F1|r.LU_F0) * (1-s.S2), id:'lu_mux' },
+    // AU output to MUX input 1
+    { pts:[{x:395,y:300},{x:458,y:300},{x:458,y:238},{x:520,y:238}], sig: (r.AU_F1|r.AU_F0) * s.S2, id:'au_mux' },
+    // MUX output to F
+    { pts:[{x:580,y:192},{x:748,y:192}], sig: r.F1|r.F0, id:'mux_f' },
+    // AU Cout to output
+    { pts:[{x:395,y:345},{x:440,y:345},{x:440,y:408},{x:748,y:408}], sig: r.Cout * s.S2, id:'au_cout' },
+    // Junction dots
+  ];
+}
+
+// Junction points (where wires branch)
+const junctions = [
+  { x:168, y:135, sigGetter: () => state.A1|state.A0 },
+  { x:153, y:190, sigGetter: () => state.B1|state.B0 },
+  { x:133, y:345, sigGetter: () => state.S1|state.S0 },
+];
+
+// Input/output label positions
+const inputLabels = [
+  { x:10, y:139, text: 'A[1:0]', sigGetter: () => state.A1|state.A0 },
+  { x:10, y:194, text: 'B[1:0]', sigGetter: () => state.B1|state.B0 },
+  { x:10, y:29, text: 'S2', sigGetter: () => state.S2 },
+  { x:10, y:349, text: 'S1,S0', sigGetter: () => state.S1|state.S0 },
+  { x:10, y:399, text: 'Cin', sigGetter: () => state.Cin },
+];
+const outputLabels = [
+  { x:752, y:196, text: 'F[1:0]', sigGetter: () => { const r=compute(); return r.F1|r.F0; } },
+  { x:752, y:412, text: 'Cout', sigGetter: () => { const r=compute(); return r.Cout * state.S2; } },
+];
+
+// MUX port labels
+const muxLabels = [
+  { x:524, y:148, text: '0', align:'right' },
+  { x:524, y:234, text: '1', align:'right' },
+  { x:553, y:105, text: 'S', align:'center' },
+];
+
+// Animation loop
+let lastTime = 0;
+function draw(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+
+  // Update wire animations
+  const wires = getWireDefs();
+  wires.forEach(w => {
+    if (!(w.id in wireAnim)) wireAnim[w.id] = 0;
+    const target = w.sig;
+    wireAnim[w.id] += (target - wireAnim[w.id]) * Math.min(1, dt * 12);
+    if (Math.abs(wireAnim[w.id] - target) < 0.005) wireAnim[w.id] = target;
+  });
+
+  // Clear
+  ctx.clearRect(0, 0, CW, CH);
+
+  // Background
+  ctx.fillStyle = '#0a0f1a';
+  ctx.fillRect(0, 0, CW, CH);
+
+  // Subtle grid
+  ctx.strokeStyle = 'rgba(30,45,74,0.3)';
+  ctx.lineWidth = 0.5;
+  for (let gx = 0; gx < CW; gx += 20) {
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, CH); ctx.stroke();
+  }
+  for (let gy = 0; gy < CH; gy += 20) {
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(CW, gy); ctx.stroke();
+  }
+
+  // Draw wire glow (behind everything)
+  wires.forEach(w => {
+    const t = wireAnim[w.id] || 0;
+    if (t > 0.1) {
+      ctx.strokeStyle = `rgba(0,230,118,${t * 0.15})`;
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(w.pts[0].x, w.pts[0].y);
+      for (let i = 1; i < w.pts.length; i++) ctx.lineTo(w.pts[i].x, w.pts[i].y);
+      ctx.stroke();
+    }
+  });
+
+  // Draw wires
+  wires.forEach(w => {
+    const t = wireAnim[w.id] || 0;
+    const r = Math.round(20 + (0 - 20) * t);
+    const g = Math.round(38 + (230 - 38) * t);
+    const b = Math.round(26 + (118 - 26) * t);
+    ctx.strokeStyle = `rgb(${r},${g},${b})`;
+    ctx.lineWidth = t > 0.5 ? 2 : 1.2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(w.pts[0].x, w.pts[0].y);
+    for (let i = 1; i < w.pts.length; i++) ctx.lineTo(w.pts[i].x, w.pts[i].y);
+    ctx.stroke();
+  });
+
+  // Draw junction dots
+  junctions.forEach(j => {
+    const v = j.sigGetter();
+    ctx.fillStyle = v ? COL_JUNCTION : '#1e3a5f';
+    ctx.beginPath();
+    ctx.arc(j.x, j.y, v ? 3.5 : 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    if (v) {
+      ctx.fillStyle = 'rgba(0,230,118,0.3)';
+      ctx.beginPath();
+      ctx.arc(j.x, j.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+
+  // Draw blocks
+  blocks.forEach(b => {
+    const isActive = (b.id === 'lu' && state.S2 === 0) || (b.id === 'au' && state.S2 === 1) || b.id === 'mux';
+    const col = isActive ? b.activeColor : COL_BLOCK_BORDER;
+
+    // Block shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    roundRect(ctx, b.x+2, b.y+2, b.w, b.h, 6, true, false);
+
+    // Block fill
+    ctx.fillStyle = COL_BLOCK;
+    roundRect(ctx, b.x, b.y, b.w, b.h, 6, true, false);
+
+    // Block border
+    ctx.strokeStyle = col;
+    ctx.lineWidth = isActive ? 2 : 1;
+    roundRect(ctx, b.x, b.y, b.w, b.h, 6, false, true);
+
+    // Active glow
+    if (isActive) {
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 15;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1;
+      roundRect(ctx, b.x, b.y, b.w, b.h, 6, false, true);
+      ctx.shadowBlur = 0;
+    }
+
+    // Block label
+    ctx.fillStyle = isActive ? col : COL_TEXT;
+    ctx.font = '600 11px "Space Grotesk", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.label, b.x + b.w/2, b.y + b.h/2 - 6);
+
+    // Sub label
+    ctx.fillStyle = COL_TEXT;
+    ctx.font = '400 9px "JetBrains Mono", monospace';
+    ctx.fillText(b.sub, b.x + b.w/2, b.y + b.h/2 + 10);
+  });
+
+  // MUX port labels
+  muxLabels.forEach(ml => {
+    ctx.fillStyle = '#5a6a82';
+    ctx.font = '500 9px "JetBrains Mono", monospace';
+    ctx.textAlign = ml.align;
+    ctx.fillText(ml.text, ml.x, ml.y);
+  });
+
+  // Input labels
+  inputLabels.forEach(l => {
+    const v = l.sigGetter();
+    ctx.fillStyle = v ? COL_HIGH : COL_TEXT;
+    ctx.font = '600 10px "JetBrains Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(l.text, l.x, l.y);
+  });
+
+  // Output labels
+  outputLabels.forEach(l => {
+    const v = l.sigGetter();
+    ctx.fillStyle = v ? COL_HIGH : COL_TEXT;
+    ctx.font = '600 10px "JetBrains Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(l.text, l.x, l.y);
+  });
+
+  // Signal value annotations on wires
+  drawWireAnnotations(wires);
+
+  // Active path indicator arrows
+  drawPathIndicator();
+
+  requestAnimationFrame(draw);
+}
+
+function drawWireAnnotations(wires) {
+  ctx.font = '500 8px "JetBrains Mono", monospace';
+  ctx.textAlign = 'center';
+
+  const r = compute();
+  const annotations = [
+    { x:195, y:68, text: state.A1+''+state.A0, active: state.A1|state.A0 },
+    { x:195, y:288, text: state.A1+''+state.A0, active: state.A1|state.A0 },
+    { x:195, y:98, text: state.B1+''+state.B0, active: state.B1|state.B0 },
+    { x:195, y:313, text: state.B1+''+state.B0, active: state.B1|state.B0 },
+    { x:100, y:18, text: ''+state.S2, active: state.S2 },
+    { x:178, y:118, text: state.S1+''+state.S0, active: state.S1|state.S0 },
+    { x:178, y:363, text: state.S1+''+state.S0, active: state.S1|state.S0 },
+    { x:170, y:388, text: ''+state.Cin, active: state.Cin },
+    { x:475, y:78, text: r.LU_F1+''+r.LU_F0, active: (r.LU_F1|r.LU_F0)*(1-state.S2) },
+    { x:475, y:293, text: r.AU_F1+''+r.AU_F0, active: (r.AU_F1|r.AU_F0)*state.S2 },
+    { x:650, y:185, text: r.F1+''+r.F0, active: r.F1|r.F0 },
+    { x:590, y:401, text: ''+r.Cout, active: r.Cout*state.S2 },
+  ];
+
+  annotations.forEach(a => {
+    // Background
+    ctx.fillStyle = a.active ? 'rgba(0,230,118,0.12)' : 'rgba(10,15,26,0.8)';
+    const tw = ctx.measureText(a.text).width;
+    roundRect(ctx, a.x - tw/2 - 3, a.y - 7, tw + 6, 12, 3, true, false);
+    // Text
+    ctx.fillStyle = a.active ? COL_HIGH : '#3a4a5a';
+    ctx.fillText(a.text, a.x, a.y);
+  });
+}
+
+function drawPathIndicator() {
+  // Draw a subtle "active" highlight along the selected path
+  if (state.S2 === 0) {
+    // LU path highlighted
+    drawPathArrow(290, 87, 520, 152, COL_BLOCK_ACTIVE_LU);
+  } else {
+    // AU path highlighted
+    drawPathArrow(290, 300, 520, 238, COL_BLOCK_ACTIVE_AU);
+  }
+}
+
+function drawPathArrow(x1, y1, x2, y2, color) {
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2;
+  ctx.save();
+  ctx.globalAlpha = 0.15 + 0.05 * Math.sin(Date.now() / 500);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 12;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([8, 12]);
+  ctx.lineDashOffset = -Date.now() / 80;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
+}
+
+// ─── Init ────────────────────────────────────────────────
+update();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
